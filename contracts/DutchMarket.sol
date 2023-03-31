@@ -8,6 +8,11 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "./BokkyPooBahsRedBlackTreeLibrary.sol";
 import {DutchMarketLibrary, Mode, Offer, OpenBid} from "./DutchMarketLibrary.sol";
 
+// TODO: add events wherever required
+// TODO: add comments wherever required
+// TODO: add tests
+// TODO: check settle function
+
 /**
  * @title DutchMarket
  */
@@ -49,6 +54,10 @@ contract DutchMarket is EIP712 {
         keccak256(
             "PlaceAnonymousBlindBid(bytes32 blindBid,uint256 nonce,uint256 deadline)"
         );
+
+    // extra
+
+    uint256[] offersToDelete;
 
     // modifiers
     modifier onlyDepositWithdraw() {
@@ -481,6 +490,7 @@ contract DutchMarket is EIP712 {
                 // check if buyer has enough native balance
                 // check if seller has enough tokens
 
+                // safegaurds if seller has less tokens than offer amount
                 uint256 maxSaleAmountPossible = DutchMarketLibrary.min(
                     tokenBalances[offer.seller][tokenAddress],
                     offer.amount
@@ -488,6 +498,7 @@ contract DutchMarket is EIP712 {
 
                 buyerCapacity = nativeBalance[bid.buyer] / pricePerToken;
 
+                // safeguards if buyer has less native balance than amount in bid
                 uint256 maxBuyPossible = DutchMarketLibrary.min(
                     buyerCapacity,
                     amount
@@ -508,11 +519,18 @@ contract DutchMarket is EIP712 {
                 // update offer amount
                 offers[offer.id].amount -= amountToBuy;
 
+                if (offers[offer.id].amount == 0) {
+                    // clean up: remove offer from array
+                    offersToDelete.push(j);
+                }
+
                 // update amount
                 amount = (amount - amountToBuy);
 
                 // update storage
                 openBids[bidId].amount = amount;
+
+                buyerCapacity = nativeBalance[bid.buyer] / pricePerToken;
 
                 if (amount == 0 || buyerCapacity == 0) {
                     // remove bid
@@ -523,12 +541,33 @@ contract DutchMarket is EIP712 {
                 }
             }
 
+            // clean up: remove offers from priceToOfferId array
+            for (uint256 j = 0; j < offersToDelete.length; j++) {
+                DutchMarketLibrary.removeFromBytesArray(
+                    offersToDelete[j],
+                    priceToOfferId[lowestOffer]
+                );
+            }
+
+            if (priceToOfferId[lowestOffer].length == 0) {
+                // clean up: remove offer from offerTree
+                BokkyPooBahsRedBlackTreeLibrary.remove(
+                    offerTree[tokenAddress],
+                    lowestOffer
+                );
+            }
+
+            // make storage array to back to 0 length
+            delete offersToDelete;
+
             if (buyerCapacity == 0) {
                 break;
             }
         }
     }
 
+    // 0 settles all bids, avoid this as it may read gasLimit, use a smaller number
+    // This function is called by the owner during the settlement period to settle bids
     function matchBidsAndSettle(uint256 bidsToSettle) public onlyOwner {
         uint256 length = bidsToSettle != 0 ? bidsToSettle : openBids.length;
 
