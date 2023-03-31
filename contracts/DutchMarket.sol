@@ -533,10 +533,6 @@ contract DutchMarket is EIP712 {
                 buyerCapacity = nativeBalance[bid.buyer] / pricePerToken;
 
                 if (amount == 0 || buyerCapacity == 0) {
-                    // remove bid
-
-                    DutchMarketLibrary.removeFromOpenBidArray(bidId, openBids);
-
                     break;
                 }
             }
@@ -563,6 +559,11 @@ contract DutchMarket is EIP712 {
             if (buyerCapacity == 0) {
                 break;
             }
+        }
+
+        if (amount == 0) {
+            // clean up: remove bid from openBids
+            DutchMarketLibrary.removeFromOpenBidArray(bidId, openBids);
         }
     }
 
